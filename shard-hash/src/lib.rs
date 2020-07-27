@@ -1,91 +1,86 @@
-pub fn get_first_shard(data: usize, count: usize) -> usize {
-    data % count
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
+use std::iter::Iterator;
+
+#[derive(Copy, Clone)]
+pub struct ShardHash<H: Hasher + Sized> {
+    count: u64,
+    hasher: H,
 }
 
-pub fn get_shards(data: usize, count: usize, replicas: usize) -> Vec<usize> {
-    let mut shards = (0..count).into_iter().collect::<Vec<usize>>();
-    let mut output = Vec::with_capacity(replicas);
-    let mut data = data;
-
-    for i in 0..replicas {
-        let pos = data % (count-i);
-        data /= count-i;
-        output.push(shards.remove(pos));
-    }
-
-    output
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rand::prelude::*;
-    use std::hash::Hash;
-    use std::collections::HashSet;
-
-    fn has_unique_elements<T>(iter: T) -> bool
-    where
-        T: IntoIterator,
-        T::Item: Eq + Hash,
-    {
-        let mut uniq = HashSet::new();
-        iter.into_iter().all(move |x| uniq.insert(x))
-    }
-
-    #[test]
-    fn shards() {
-        for _ in 0..100 {
-            let count = (random::<usize>() % 100) + 1;
-            let replicas = (random::<usize>() % count) + 1;
-            let data: usize = random();
-            println!("{} {} {}", count, replicas, data);
-
-            let shards = get_shards(data, count, replicas);
-
-            assert_eq!(shards.len(), replicas);
-            assert!(has_unique_elements(shards));
+impl ShardHash<DefaultHasher> {
+    pub fn new(count: u64) -> Self {
+        Self {
+            count,
+            hasher: DefaultHasher::default(),
         }
     }
+}
 
-    #[test]
-    fn first_shard_5() {
-        let shard = get_first_shard(2237, 5);
-        println!("{:?}", shard);
-        assert_eq!(shard, 2);
+impl<H: Hasher + Sized> Hasher for ShardHash<H> {
+    fn finish(&self) -> u64 {
+        self.hasher.finish()
     }
 
-    #[test]
-    fn first_shard_7() {
-        let shard = get_first_shard(2237, 7);
-        println!("{:?}", shard);
-        assert_eq!(shard, 4);
+    fn write(&mut self, bytes: &[u8]) {
+        self.hasher.write(bytes)
+    }
+}
+
+impl<H: Hasher + Sized> IntoIterator for ShardHash<H> {
+    type Item = u64;
+    type IntoIter = ShardIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter::new(self.finish(), self.count, self.count)
+    }
+}
+
+#[derive(Clone)]
+pub struct ShardIterator {
+    state: u64,
+    pos: u64,
+    min: u64,
+    visited: Vec<u64>,
+}
+
+impl ShardIterator {
+    pub fn new(state: u64, pos: u64, size: u64) -> Self {
+        Self {
+            state,
+            pos,
+            min: pos-size,
+            visited: Vec::with_capacity(size as usize),
+        }
+    }
+}
+
+impl Iterator for ShardIterator {
+    type Item = u64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos == self.min {
+            return None
+        }
+
+        // Calculate the base shard ID
+        let mut ret = self.state % self.pos;
+
+        // Update internal state
+        self.state /= self.pos;
+        self.pos -= 1;
+
+        // Derive next available value
+        while self.visited.contains(&ret) {
+            ret += 1;
+        }
+        // Save in visited nodes
+        self.visited.push(ret.clone());
+
+        Some(ret)
     }
 
-    #[test]
-    fn shards_5_3() {
-        let shards = get_shards(2237, 5, 3);
-        println!("{:?}", shards);
-        assert_eq!(shards, vec![2, 4, 0]);
-    }
-
-    #[test]
-    fn shards_5_5() {
-        let shards = get_shards(2237, 5, 5);
-        println!("{:?}", shards);
-        assert_eq!(shards, vec![2, 4, 0, 3, 1]);
-    }
-
-    #[test]
-    fn shards_7_3() {
-        let shards = get_shards(2237, 7, 3);
-        println!("{:?}", shards);
-        assert_eq!(shards, vec![4, 1, 5]);
-    }
-
-    #[test]
-    fn shards_7_7() {
-        let shards = get_shards(2237, 7, 7);
-        println!("{:?}", shards);
-        assert_eq!(shards, vec![4, 1, 5, 3, 6, 0, 2]);
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        return (self.pos as usize, Some(self.pos as usize));
     }
 }
