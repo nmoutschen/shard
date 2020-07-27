@@ -1,11 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::hash::Hasher;
-use shard_hash::{ShardHash, ShardIterator};
+use shard_hash::{ShardHasher, ShardIterator};
 
 fn benchmark(c: &mut Criterion) {
-    c.bench_function("ShardHash into_iter", |b| {
+    c.bench_function("ShardHasher into_iter", |b| {
         b.iter(|| {
-            let mut sh = ShardHash::new(black_box(7));
+            let mut sh = ShardHasher::new(black_box(7));
             sh.write_u64(black_box(2237));
             let _si = sh.into_iter();
         });
@@ -17,17 +17,17 @@ fn benchmark(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("ShardHash 7/1", |b| {
+    c.bench_function("ShardHasher 7/1", |b| {
         b.iter(|| {
-            let mut sh = ShardHash::new(black_box(7));
+            let mut sh = ShardHasher::new(black_box(7));
             sh.write_u64(black_box(2237));
             let _shard = sh.into_iter().next();
         });
     });
 
-    c.bench_function("ShardHash 7/3", |b| {
+    c.bench_function("ShardHasher 7/3", |b| {
         b.iter(|| {
-            let mut sh = ShardHash::new(black_box(7));
+            let mut sh = ShardHasher::new(black_box(7));
             sh.write_u64(black_box(2237));
             let mut si = sh.into_iter();
 
@@ -37,9 +37,9 @@ fn benchmark(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("ShardHash 7/5", |b| {
+    c.bench_function("ShardHasher 7/5", |b| {
         b.iter(|| {
-            let mut sh = ShardHash::new(black_box(7));
+            let mut sh = ShardHasher::new(black_box(7));
             sh.write_u64(black_box(2237));
             let mut si = sh.into_iter();
 
@@ -49,9 +49,9 @@ fn benchmark(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("ShardHash 7/7", |b| {
+    c.bench_function("ShardHasher 7/7", |b| {
         b.iter(|| {
-            let mut sh = ShardHash::new(black_box(7));
+            let mut sh = ShardHasher::new(black_box(7));
             sh.write_u64(black_box(2237));
             let mut si = sh.into_iter();
 

@@ -1,23 +1,65 @@
+//! Library to generate an iterator of shard IDs from a hashable value.
+//! 
+//! [`ShardHasher`](struct.ShardHasher.html) can be used to hash arbitrary
+//! values and be transformed into an iterator. When iterating over the
+//! complete set of values, this will create an array containing a permutation
+//! of all shard IDs.
+//! 
+//! When using this library to retrieve data from shard, if the reader only
+//! cares for eventually consistent information, the reader should try to read
+//! from the first item in the iterator first, then the second if the first
+//! fails, etc. As the values are _ordered_ for a given hash value, this means
+//! that two hash values could correspond to the same shard IDs but in a
+//! different order. By iterating in order, this guarantees that the load is
+//! distributed over all shards equally without relying on randomness on the
+//! client side.
+//! 
+//! ## Examples
+//! 
+//! ```rust
+//! use std::hash::Hasher;
+//! use shard_hash::ShardHasher;
+//! 
+//! // Create a new Hasher
+//! let mut sh = ShardHasher::new(7);
+//! sh.write_u64(2237);
+//! 
+//! // Iterate over the first 3 shard IDs
+//! sh.into_sized_iter(3)
+//!     .for_each(|_shard| {
+//!         // Do something
+//!     });
+//! ```
+
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use std::iter::Iterator;
 
+/// Generic Hasher that can be transformed into a [`ShardIterator`](struct.ShardIterator.html).
 #[derive(Copy, Clone)]
-pub struct ShardHash<H: Hasher + Sized> {
+pub struct ShardHasher<H: Hasher + Sized> {
     count: u64,
     hasher: H,
 }
 
-impl ShardHash<DefaultHasher> {
+impl ShardHasher<DefaultHasher> {
+    /// Create a new ShardHasher using [`DefaultHasher`](/nightly/std/collections/hash_map/struct.DefaultHasher.html).
+    /// 
+    /// `count` correspond to the total number of shards in the system.
     pub fn new(count: u64) -> Self {
         Self {
             count,
             hasher: DefaultHasher::default(),
         }
     }
+
+    /// Create a [`ShardIterator`](struct.ShardIterator.html) that will only return `size` elements.
+    pub fn into_sized_iter(self, size: u64) -> ShardIterator {
+        ShardIterator::new(self.finish(), self.count, size)
+    }
 }
 
-impl<H: Hasher + Sized> Hasher for ShardHash<H> {
+impl<H: Hasher + Sized> Hasher for ShardHasher<H> {
     fn finish(&self) -> u64 {
         self.hasher.finish()
     }
@@ -27,7 +69,7 @@ impl<H: Hasher + Sized> Hasher for ShardHash<H> {
     }
 }
 
-impl<H: Hasher + Sized> IntoIterator for ShardHash<H> {
+impl<H: Hasher + Sized> IntoIterator for ShardHasher<H> {
     type Item = u64;
     type IntoIter = ShardIterator;
 
@@ -36,6 +78,9 @@ impl<H: Hasher + Sized> IntoIterator for ShardHash<H> {
     }
 }
 
+/// Iterator returning shard IDs in preferred query order
+/// 
+/// A `ShardIterator` will not return the same shard ID more than once.
 #[derive(Clone)]
 pub struct ShardIterator {
     state: u64,
@@ -45,6 +90,10 @@ pub struct ShardIterator {
 }
 
 impl ShardIterator {
+    /// Create a new `ShardIterator`
+    /// 
+    /// When `pos` and `size` are equal, this will return a permutation of all
+    /// the values between `0` and `pos - 1` based on the `state`.
     pub fn new(state: u64, pos: u64, size: u64) -> Self {
         Self {
             state,
@@ -96,7 +145,7 @@ mod tests {
     // Static test for 7 to prevent alteration to the algorithm
     #[test]
     fn hash_7() {
-        let mut sh = ShardHash::new(7);
+        let mut sh = ShardHasher::new(7);
         sh.write_u64(2237);
         let shards = sh.into_iter().collect::<Vec<u64>>();
 
