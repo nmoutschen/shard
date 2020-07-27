@@ -84,3 +84,108 @@ impl Iterator for ShardIterator {
         return (self.pos as usize, Some(self.pos as usize));
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+    use std::hash::Hash;
+    use rand::prelude::*;
+
+    // Static test for 7 to prevent alteration to the algorithm
+    #[test]
+    fn hash_7() {
+        let mut sh = ShardHash::new(7);
+        sh.write_u64(2237);
+        let shards = sh.into_iter().collect::<Vec<u64>>();
+
+        assert_eq!(shards, vec![1, 5, 4, 0, 2, 3, 6]);
+    }
+
+    // Static test for 7/1 to prevent alteration to the algorithm
+    #[test]
+    fn iterator_7_1() {
+        let shards = ShardIterator::new(2237, 7, 1).collect::<Vec<u64>>();
+
+        assert_eq!(shards, vec![4]);
+    }
+
+    // Static test for 7/3 to prevent alteration to the algorithm
+    #[test]
+    fn iterator_7_3() {
+        let shards = ShardIterator::new(2237, 7, 3).collect::<Vec<u64>>();
+
+        assert_eq!(shards, vec![4, 1, 3]);
+    }
+
+    // Static test for 7/7 to prevent alteration to the algorithm
+    #[test]
+    fn iterator_7_7() {
+        let shards = ShardIterator::new(2237, 7, 7).collect::<Vec<u64>>();
+
+        assert_eq!(shards, vec![4, 1, 3, 2, 5, 0, 6]);
+    }
+
+    // Test that the shards length is equal to the number of replicas
+    #[test]
+    fn length() {
+        for _ in 0..100 {
+            let value: u64 = random();
+            let count = (random::<u64>() % 256) + 1;
+            let replicas = (random::<u64>() % count) + 1;
+
+            let shards = ShardIterator::new(value, count, replicas).collect::<Vec<u64>>();
+            assert_eq!(shards.len() as u64, replicas);
+        }
+    }
+
+    // Test that a number of replicas greater than count trigger a panic
+    #[test]
+    #[should_panic]
+    fn invalid_replicas() {
+        let value: u64 = random();
+        let replicas = (random::<u64>() % 256) + 1;
+        let count = (random::<u64>() % replicas) + 1;
+
+        let _shards = ShardIterator::new(value, count, replicas).collect::<Vec<u64>>();
+    }
+
+    // Test that all values are unique
+    #[test]
+    fn unique() {
+        fn has_unique_elements<T>(iter: T) -> bool
+        where
+            T: IntoIterator,	
+            T::Item: Eq + Hash,	
+        {	
+            let mut uniq = HashSet::new();	
+            iter.into_iter().all(move |x| uniq.insert(x))	
+        }
+
+        for _ in 0..100 {
+            let value: u64 = random();
+            let count = (random::<u64>() % 256) + 1;
+            let replicas = (random::<u64>() % count) + 1;
+
+            let shards = ShardIterator::new(value, count, replicas).collect::<Vec<u64>>();
+            assert_eq!(shards.len() as u64, replicas);
+            assert!(has_unique_elements(shards));
+        }
+    }
+
+    // Test that the same parameters with less replicas start with the same sequence
+    #[test]
+    fn successive() {
+        for _ in 0..100 {
+            let value: u64 = random();
+            let count = (random::<u64>() % 256) + 1;
+            let replicas = (random::<u64>() % count) + 1;
+            let replicas2 = (random::<u64>() % replicas) + 1;
+
+            let shards = ShardIterator::new(value, count, replicas).collect::<Vec<u64>>();
+            let shards2 = ShardIterator::new(value, count, replicas2).collect::<Vec<u64>>();
+            assert_eq!(shards2[..], shards[..replicas2 as usize]);
+        }
+    }
+}
